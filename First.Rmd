@@ -1,0 +1,198 @@
+---
+title: "Advanced R - Term Project"
+author: "Ozgur Polat, Bugra Duman"
+date: "5/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Library Imports
+
+```{r warning=FALSE, message=FALSE}
+library(shiny)
+library(dplyr)
+library(tidyverse)
+library(DT)
+library(shinythemes)
+library(knitr)
+library(flexdashboard)
+library(plotly)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+### Importing The Data
+
+```{r}
+protein <- read.csv2("data/protein.csv", header=TRUE, sep=",")
+head(protein)
+```
+
+
+### Own S4 Class and Method For Each Country
+```{r}
+# OWN CLASS
+country <- setClass("country",
+                    slots = list(cname = "character",
+                                 alcholic_beverages = "numeric",
+                                 animal_products = "numeric", 
+                                 animal_fats = "numeric",
+                                 aquatic_products = "numeric",
+                                 cereals = "numeric",
+                                 eggs = "numeric",
+                                 fish = "numeric",
+                                 fruits = "numeric",
+                                 meat = "numeric",
+                                 milk = "numeric",
+                                 offals = "numeric",
+                                 oilcrops = "numeric",
+                                 pulses = "numeric",
+                                 spices = "numeric",
+                                 starchy = "numeric",
+                                 stimulants = "numeric",
+                                 sugar_crops = "numeric",
+                                 sugar_and_sweeteners = "numeric",
+                                 treenuts = "numeric",
+                                 vegetal = "numeric",
+                                 vegetable_oils = "numeric",
+                                 vegetables = "numeric",
+                                 miscellaneous = "numeric",
+                                 obesity = "numeric",
+                                 undernourished = "numeric",
+                                 confirmed = "numeric",
+                                 deaths = "numeric",
+                                 recovered = "numeric",
+                                 active = "numeric",
+                                 population = "numeric"))
+
+#CLASS METHOD
+setMethod(f = "show", 
+          signature = "country", 
+          definition = function(object) {
+            cat(object@cname, "\n")
+            cat("Number of Confirmed Cases:", object@confirmed*object@population, "\n")
+            cat("Number of Active Cases:", object@active*object@population, "\n")
+            cat("Number of Recovered Cases:", object@recovered*object@population, "\n")
+          }
+)
+
+
+#EACH ROW IN THE DATASET WILL BECOME A COUNTRY OBJECT
+#iterating over the dataset
+for (row in 1:nrow(protein)) {
+  #creation of country objects for each row and appending them to the empty list initialized above
+  countries[as.character(protein$Country[row])] <- country(cname = as.character(protein$Country[row]),
+                                             alcholic_beverages = as.numeric(protein$Alcoholic.Beverages[row]),
+                                             animal_products = as.numeric(protein$Animal.Products[row]), 
+                                             animal_fats = as.numeric(protein$Animal.fats[row]),
+                                             aquatic_products = as.numeric(protein$Aquatic.Products..Other[row]),
+                                             cereals = as.numeric(protein$Cereals...Excluding.Beer[row]),
+                                             eggs = as.numeric(protein$Eggs[row]),
+                                             fish = as.numeric(protein$Fish..Seafood[row]),
+                                             fruits = as.numeric(protein$Fruits...Excluding.Wine[row]),
+                                             meat = as.numeric(protein$Meat[row]),
+                                             milk = as.numeric(protein$Milk...Excluding.Butter[row]),
+                                             offals = as.numeric(protein$Offals[row]),
+                                             oilcrops = as.numeric(protein$Oilcrops[row]),
+                                             pulses = as.numeric(protein$Pulses[row]),
+                                             spices = as.numeric(protein$Spices[row]),
+                                             starchy = as.numeric(protein$Starchy.Roots[row]),
+                                             stimulants = as.numeric(protein$Stimulants[row]),
+                                             sugar_crops = as.numeric(protein$Sugar.Crops[row]),
+                                             sugar_and_sweeteners = as.numeric(protein$Sugar...Sweeteners[row]),
+                                             treenuts = as.numeric(protein$Treenuts[row]),
+                                             vegetal = as.numeric(protein$Vegetal.Products[row]),
+                                             vegetable_oils = as.numeric(protein$Vegetable.Oils[row]),
+                                             vegetables = as.numeric(protein$Vegetables[row]),
+                                             miscellaneous = as.numeric(protein$Miscellaneous[row]),
+                                             obesity = as.numeric(protein$Obesity[row]),
+                                             undernourished = as.numeric(protein$Undernourished[row]),
+                                             confirmed = as.numeric(protein$Confirmed[row]),
+                                             deaths = as.numeric(protein$Deaths[row]),
+                                             recovered = as.numeric(protein$Recovered[row]),
+                                             active = as.numeric(protein$Active[row]),
+                                             population = as.numeric(protein$Population[row]))
+} 
+
+
+#As per seen below the object type is S4
+typeof(countries$Afghanistan)
+
+#Here the S4 object automatically invokes the defined method
+countries$Afghanistan
+
+
+```
+
+### Shiny With DPLYR and Own Function
+
+```{r pressure, echo=FALSE}
+
+
+country_statistics <- function(c){
+  #Ulkenin adi
+  #Death
+  #Recovery
+  #Active
+  #Death/Total vs. vs.
+  #Tabloya donustursun
+}
+
+plot_it <- function(d, a, b){
+    #if else ile farkli plot secenekleri
+    myplot <- ggplot(d, aes(x = a, y = b, color= `Total Volume`)) +
+      geom_point()
+    ggplotly(myplot)
+    
+    
+    #a2 <- select(protein,a)
+    #ggplot(data = protein, aes(x = a2, y = b)) +
+    #geom_point(colour = "blue") 
+}
+
+#plot_it("Confirmed", "Alcoholic")
+```
+
+```{r echo=FALSE}
+ui <- fluidPage(
+  theme = shinythemes::shinytheme('simplex'),
+  titlePanel("Protein Shake"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("first", "Select Country", unique(protein$Country)), 
+      selectInput("Second", "Select Column", unique(protein$Deaths))
+      #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
+      #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
+      
+
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Table", DT::DTOutput('graph'))
+      ),
+    )
+  )
+
+)
+
+server <- function(input, output, session){
+  
+  output$graph <- DT::renderDT({
+    data <- protein  %>%
+      filter(Country == input$first) %>%
+      filter(Deaths == input$second)
+    
+    plot_it(data,"Confirmed", "Alcoholic")
+    
+  })
+
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
