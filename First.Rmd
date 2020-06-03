@@ -82,7 +82,7 @@ setMethod(f = "show",
 
 
 #Creation of an empty list
-countries <- rep(NA, 170)
+countries <- list()
 
 
 #EACH ROW IN THE DATASET WILL BECOME A COUNTRY OBJECT
@@ -124,10 +124,13 @@ for (row in 1:nrow(protein)) {
 
 
 #As per seen below the object type is S4
-typeof(countries$Afghanistan)
+typeof(countries$Poland)
 
 #Here the S4 object automatically invokes the defined method
-countries$Afghanistan
+countries$Poland
+  
+#He the object attribute is called
+countries$Turkey@fruits
 
 
 ```
@@ -138,10 +141,8 @@ countries$Afghanistan
 
 
 country_statistics <- function(c){
-    cat(object@cname, "\n")
-    cat("Number of Confirmed Cases:", object@confirmed*object@population, "\n")
-    cat("Number of Active Cases:", object@active*object@population, "\n")
-    cat("Number of Recovered Cases:", object@recovered*object@population, "\n")
+  #c variable i yukaridaki classtan 'countries@Poland' gibi alinip @ isareti ile attributelari alinabilir
+    print(c@fruits)
 }
 
 plot_it <- function(d, a, b){
