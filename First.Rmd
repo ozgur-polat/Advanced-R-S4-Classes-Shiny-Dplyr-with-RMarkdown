@@ -81,6 +81,10 @@ setMethod(f = "show",
 )
 
 
+#Creation of an empty list
+countries <- rep(NA, 170)
+
+
 #EACH ROW IN THE DATASET WILL BECOME A COUNTRY OBJECT
 #iterating over the dataset
 for (row in 1:nrow(protein)) {
@@ -134,12 +138,10 @@ countries$Afghanistan
 
 
 country_statistics <- function(c){
-  #Ulkenin adi
-  #Death
-  #Recovery
-  #Active
-  #Death/Total vs. vs.
-  #Tabloya donustursun
+    cat(object@cname, "\n")
+    cat("Number of Confirmed Cases:", object@confirmed*object@population, "\n")
+    cat("Number of Active Cases:", object@active*object@population, "\n")
+    cat("Number of Recovered Cases:", object@recovered*object@population, "\n")
 }
 
 plot_it <- function(d, a, b){
