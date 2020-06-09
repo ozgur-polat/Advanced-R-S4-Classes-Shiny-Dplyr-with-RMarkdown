@@ -37,6 +37,30 @@ head(protein)
 ### Own S4 Class and Method For Each Country
 ```{r message=TRUE, warning=FALSE}
 # OWN CLASS
+
+
+
+
+
+col_to_bind <- as.data.frame(apply(protein[c("Confirmed","Deaths","Recovered","Active","Population")],2,as.numeric))
+
+nums<- col_to_bind %>% transmute(Confirmed = Population * Confirmed / 100, 
+  Active = Population * Active / 100,
+  Recovered = Population * Recovered / 100,
+  Deaths = Population * Deaths / 100)
+
+protein <-subset(protein, select = -c(Confirmed,Deaths,Recovered,Active,Unit..all.except.Population.,X))
+
+
+protein <- cbind(protein,nums)
+
+
+
+
+
+
+
+
 country <- setClass("country",
                     slots = list(cname = "character",
                                  alcholic_beverages = "numeric",
@@ -75,9 +99,10 @@ setMethod(f = "show",
           signature = "country", 
           definition = function(object) {
             cat(object@cname, "\n")
-            cat("Number of Confirmed Cases:", object@confirmed*object@population, "\n")
-            cat("Number of Active Cases:", object@active*object@population, "\n")
-            cat("Number of Recovered Cases:", object@recovered*object@population, "\n")
+            cat("Number of Confirmed Cases:", object@confirmed, "\n")
+            cat("Number of Active Cases:", object@active, "\n")
+            cat("Number of Recovered Cases:", object@recovered, "\n")
+            cat("Number of Deaths:", object@deaths, "\n")
           }
 )
 
@@ -129,6 +154,7 @@ typeof(countries$Poland)
 
 #Here the S4 object automatically invokes the defined method
 countries$Poland
+countries$Turkey
   
 #Here the object attribute is called
 countries$Turkey@fruits
@@ -142,17 +168,7 @@ countries$Turkey@fruits
 
 #Creating group for basic stats
 #Changing data types to number to compute basic math
-col_to_bind <- as.data.frame(apply(protein[c("Confirmed","Deaths","Recovered","Active","Population")],2,as.numeric))
 
-nums<- col_to_bind %>% transmute("Number of Confirmed" = Population * Confirmed, 
-  "Number of Active" = Population * Active,
-  "Number of Recovered" = Population * Recovered,
-  "Number of Deaths" = Population * Deaths)
-
-protein <-subset(protein, select = -c(Confirmed,Deaths,Recovered,Active,Unit..all.except.Population.,X))
-
-
-protein <- cbind(protein,nums)
 
 country_statistics <- function(c_name){
   #c variable i yukaridaki classtan 'countries@Poland' gibi alinip @ isareti ile attributelari alinabilir
