@@ -166,8 +166,8 @@ ui <- fluidPage(
   titlePanel("Protein Shake"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("first", "Select Country", unique(protein$Country)), 
-      selectInput("Second", "Select Column", unique(protein$Deaths))
+      selectInput("first", "Select Country", colnames(protein[,-1])), 
+      selectInput("second", "Select Column", colnames(protein[,-1]))
       #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
       #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
       
@@ -175,7 +175,8 @@ ui <- fluidPage(
     ),
     mainPanel(
       tabsetPanel(
-        tabPanel("Table", DT::DTOutput('graph'))
+        tabPanel("Plot", plotlyOutput('plot')),
+        tabPanel("Boxplot", plotlyOutput('boxplot'))
       ),
     )
   )
@@ -183,15 +184,17 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session){
-  
-  output$graph <- DT::renderDT({
-    data <- protein  %>%
-      filter(Country == input$first) %>%
-      filter(Deaths == input$second)
-    
-    plot_it(data,"Confirmed", "Alcoholic")
-    
+  output$plot <- renderPlotly({
+    myplot <- ggplot(protein, aes_string(x = input$first, y=input$second,colour = '"smooth"'))
+    ggplotly(myplot)
   })
+  
+  output$boxplot <- renderPlotly({
+    myplot <- ggplot(protein, aes(x = "", y = protein$Alcoholic.Beverages)) + 
+      geom_boxplot()
+    ggplotly(myplot)
+  })
+
 
 }
 
