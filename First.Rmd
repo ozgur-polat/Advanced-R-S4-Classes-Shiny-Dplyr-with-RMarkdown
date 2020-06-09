@@ -28,13 +28,14 @@ library(ggplot2)
 ### Importing The Data
 
 ```{r}
-protein <- read.csv2("data/protein.csv", header=TRUE, sep=",")
+protein <- read.csv2("data/protein.csv", header=TRUE, sep=";")
 head(protein)
+
 ```
 
 
 ### Own S4 Class and Method For Each Country
-```{r}
+```{r message=TRUE, warning=FALSE}
 # OWN CLASS
 country <- setClass("country",
                     slots = list(cname = "character",
@@ -129,7 +130,7 @@ typeof(countries$Poland)
 #Here the S4 object automatically invokes the defined method
 countries$Poland
   
-#He the object attribute is called
+#Here the object attribute is called
 countries$Turkey@fruits
 
 
@@ -139,12 +140,26 @@ countries$Turkey@fruits
 
 ```{r pressure, echo=FALSE}
 
+#Creating group for basic stats
+#Changing data types to number to compute basic math
+col_to_bind <- as.data.frame(apply(protein[c("Confirmed","Deaths","Recovered","Active","Population")],2,as.numeric))
 
-country_statistics <- function(c){
+nums<- col_to_bind %>% transmute("Number of Confirmed" = Population * Confirmed, 
+  "Number of Active" = Population * Active,
+  "Number of Recovered" = Population * Recovered,
+  "Number of Deaths" = Population * Deaths)
+
+protein <-subset(protein, select = -c(Confirmed,Deaths,Recovered,Active,Unit..all.except.Population.,X))
+
+
+protein <- cbind(protein,nums)
+
+country_statistics <- function(c_name){
   #c variable i yukaridaki classtan 'countries@Poland' gibi alinip @ isareti ile attributelari alinabilir
-    print(c@fruits)
+  
+  return(countries$c_nam)
 }
-
+country_statistics(Portugal)
 plot_it <- function(d, a, b){
     #if else ile farkli plot secenekleri
     myplot <- ggplot(d, aes(x = a, y = b, color= `Total Volume`)) +
@@ -167,7 +182,8 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       selectInput("first", "Select Country", unique(protein$Country)), 
-      selectInput("Second", "Select Column", unique(protein$Deaths))
+      selectInput("Second", "Select Column", unique(protein$Deaths)),
+      radioButtons("radio","Select Plot type",choices = c("Scatter","Bar"),icon = icon("thumbs-up"))
       #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
       #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
       
