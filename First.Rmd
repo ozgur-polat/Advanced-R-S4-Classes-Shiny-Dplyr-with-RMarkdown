@@ -34,12 +34,8 @@ head(protein)
 ```
 
 
-### Own S4 Class and Method For Each Country
+
 ```{r message=TRUE, warning=FALSE}
-# OWN CLASS
-
-
-
 
 
 col_to_bind <- as.data.frame(apply(protein[c("Confirmed","Deaths","Recovered","Active","Population")],2,as.numeric))
@@ -53,14 +49,11 @@ protein <-subset(protein, select = -c(Confirmed,Deaths,Recovered,Active,Unit..al
 
 
 protein <- cbind(protein,nums)
+```
 
 
-
-
-
-
-
-
+### Own S4 Class and Method For Each Country
+```{r message=TRUE, warning=FALSE}
 country <- setClass("country",
                     slots = list(cname = "character",
                                  alcholic_beverages = "numeric",
