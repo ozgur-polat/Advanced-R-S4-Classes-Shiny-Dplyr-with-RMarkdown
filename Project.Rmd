@@ -174,7 +174,7 @@ countries$Turkey@fruits
 
 ### Own Function to Plot Country Shape
 Please run codes here in RStudio since visual outputs are different.
-```{r pressure, echo=FALSE}
+```{r message=TRUE, warning=FALSE}
 #In this Own Function the trick is using the default value for the input variable. If variable is empty the function plots world map. If a country name is given then we get country plote. Moreover, you can pass as much as arguments you want and get the combination of ccountries.
 plot_map <- function(...){
     x <- list(...)
