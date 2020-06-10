@@ -37,16 +37,19 @@ library(maptools)
 
 ### Importing The Data
 
-```{r}
+```{r, warning=FALSE}
 protein <- read.csv2("data/protein.csv", header=TRUE, sep=";")
 head(protein)
+
+# Some columns are gathered as factors. We need them as numeric.
+protein[,-1] <- lapply(protein[,-1], function(x) as.numeric(as.character(x)))
 
 ```
 
 
 ### DPLYR and TIDYR Section
 ```{r message=TRUE, warning=FALSE}
-
+#Following columns are in the form of percentages over the population and we need them as in number of people. So appropriate calculations are done here.
 
 col_to_bind <- as.data.frame(apply(protein[c("Confirmed","Deaths","Recovered","Active","Population")],2,as.numeric))
 
@@ -64,6 +67,7 @@ protein <- cbind(protein,nums)
 
 ### Own S4 Class and Method For Each Country
 ```{r message=TRUE, warning=FALSE}
+# Here we are turning each row into an S4 Class object which we could use them in the following calculations and visualizations. However, it is best to stick with our dataframe in this case. We would like to present our knowledge on S4 Classes and Object Oriented Programming but do not want to overcomplicate anything for the sake of extra points.
 country <- setClass("country",
                     slots = list(cname = "character",
                                  alcholic_beverages = "numeric",
@@ -111,7 +115,6 @@ setMethod(f = "show",
             return(f)
           }
 )
-
 
 #Creation of an empty list
 countries <- list()
@@ -163,151 +166,49 @@ countries$Poland
 countries$Turkey
   
 #Here the object attribute is called
+#Normally this attribute should be called via a devoted get function for security purposes. However, following applications will not require us to use these class objects. Thus, there is not get methods for each of the attribute.
 countries$Turkey@fruits
 
-
 ```
 
-### Shiny With DPLYR and Own Function
 
+### Own Function to Plot Country Shape
+Please run codes here in RStudio since visual outputs are different.
 ```{r pressure, echo=FALSE}
-
-#Creating group for basic stats
-#Changing data types to number to compute basic math
-
-
-plot_it <- function(d, a, b){
-    #if else ile farkli plot secenekleri
-    myplot <- ggplot(d, aes(x = a, y = b, color= `Total Volume`)) +
-      geom_point()
-    ggplotly(myplot)
-    
-    
-    #a2 <- select(protein,a)
-    #ggplot(data = protein, aes(x = a2, y = b)) +
-    #geom_point(colour = "blue") 
+#In this Own Function the trick is using the default value for the input variable. If variable is empty the function plots world map. If a country name is given then we get country plote. Moreover, you can pass as much as arguments you want and get the combination of ccountries.
+plot_map <- function(...){
+    x <- list(...)
+    map('worldHires', x) 
 }
 
-#plot_it("Confirmed", "Alcoholic")
+plot_map()
+plot_map("Poland")
+plot_map("Turkey")
+plot_map("Turkey", "Poland")
 
-#Preparation for map plot
-#Getting the world map
-map.world <- map_data("world")
-
-#getting the supported region names
-i <- unique(map.world$region)
-i
-
-#getting our country names
-k <- as.factor(protein$Country) %>% levels()
-k
-
-#comparing them with the supported ones
-j <- !(k %in% i)
-j
-
-#extracting not supported ones
-l <- which(j, arr.ind = FALSE, useNames = TRUE)
-l
-
-#Displaying them
-for (row in l){
-  cat(as.character(protein$Country[row]),"\n")
-}
-
-#Recoding
-protein$Country <- recode(protein$Country
-                                  ,'Antigua and Barbuda' = 'Antigua'
-                                  ,'Congo' = 'Republic of Congo'
-                                  ,"Cote d'Ivoire" = 'Ivory Coast'
-                                  ,'Czechia' = 'Czech Republic'
-                                  ,'Iran (Islamic Republic of)' = 'Iran'
-                                  ,'Korea' = 'South Korea'
-                                  ,'United Kingdom' = 'UK'
-                                  ,'United Republic of Tanzania' = 'Tanzania'
-                                  ,'United States of America' = 'USA'
-                                  )
-# LEFT JOIN
-map.world_joined <- left_join(map.world, protein, by = c('region' = 'Country'))
-identical(map.world,map.world_joined)
-head(map.world_joined)
-
-#===================================================
-# CREATE FLAG
-# - in the map, we're going to highlight
-#   the countries with high 'talent competitiveness'
-# - Here, we'll create a flag that will
-#   indicate whether or not we want to 
-#   "fill in" a particular country 
-#   on the map
-#===================================================
-map.world_joined <- map.world_joined %>% mutate(fill_flg = ifelse(is.na(rank),F,T))
-head(map.world_joined)
-
-#Creating Country Points For High Cases With Geocodes (Should be Automated)
-df.country_points <- data.frame(country = c("USA","Russia"), lon = c(as.numeric(37.09024),as.numeric(61.52401)),lat = c(as.numeric(-95.712891),as.numeric(105.318756)), stringsAsFactors = F)
-glimpse(df.country_points)
-
-
-
-
-
-
-ggplot() +
-  geom_polygon(data = map.world_joined, aes(x = long, y = lat, group = group, fill = fill_flg)) +
-  geom_point(data = df.country_points, aes(x = lon, y = lat), color = "#e60000") +
-  scale_fill_manual(values = c("#CCCCCC","#e60000")) +
-  labs(title = 'Countries with Selected Variable'
-       ,subtitle = "source: COVID-19 Healthy Diet Dataset") +
-  theme(text = element_text(color = "#FFFFFF")
-        ,panel.background = element_rect(fill = "#444444")
-        ,plot.background = element_rect(fill = "#444444")
-        ,panel.grid = element_blank()
-        ,plot.title = element_text(size = 30)
-        ,plot.subtitle = element_text(size = 10)
-        ,axis.text = element_blank()
-        ,axis.title = element_blank()
-        ,axis.ticks = element_blank()
-        ,legend.position = "none"
-        )
-
-
-
-
-
-
-protein$Country[162]
-
-
-
-
-
-map('worldHires')
-map('worldHires',"Malta")
-
-str(protein)
+#Lets try to plot UK all together since it consists of more than one countries.
+plot_map('UK', 'Ireland', 'Isle of Man','Isle of Wight', 'Wales:Anglesey')
 
 ```
+
+### Shiny Application
 
 ```{r echo=FALSE}
 ui <- fluidPage(
   theme = shinythemes::shinytheme('simplex'),
-  titlePanel("Plotter Panel"),
+  titlePanel("Country Statistics"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("first", "Select Country", unique(protein$Country)), 
-      selectInput("second", "Select Column", colnames(protein[,-1]))
-      #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
-      #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
+      selectInput("first", "Select Country For Summary and Data Table", unique(protein$Country)), 
+      selectInput("second", "Select Variable For Histogram", colnames(protein[,-1]))
       
 
     ),
     mainPanel(
       tabsetPanel(
-        tabPanel("Summary", plotlyOutput('plot')),
-        tabPanel("Data Table", DT::DTOutput('table')),
-        tabPanel("Boxplot", plotlyOutput('boxplot')),
-        tabPanel("World Map", plotlyOutput('mapplot'))
+        tabPanel("Summary", textOutput("titleSummary"), plotlyOutput('plot')),
+        tabPanel("Data Table", textOutput("titleTable"),  DT::DTOutput('table')),
+        tabPanel("Histogram", plotlyOutput('histogram'))
       ),
     )
   )
@@ -316,8 +217,6 @@ ui <- fluidPage(
 
 server <- function(input, output, session){
   output$plot <- renderPlotly({
-    #myplot <- ggplot(protein, aes_string(x = input$first, y=input$second,colour = protein$Country))
-    #ggplotly(myplot)
     newData <- protein  %>%
       filter(Country == input$first)
     myplot <- ggplot(newData, aes(x = `Country`, y = `Active`, color= `Deaths`)) +
@@ -327,17 +226,12 @@ server <- function(input, output, session){
     ggplotly(myplot)
   })
   
-  output$boxplot <- renderPlotly({
-    myplot <- ggplot(protein, aes(x = "", y = input$second)) + 
-      geom_boxplot()
+  output$histogram <- renderPlotly({
+    myplot <- ggplot(protein, aes_string(x='Country', y=input$second)) + 
+        geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
     ggplotly(myplot)
   })
-  output$mapplot <- renderPlotly({
-    data(wrld_simpl)
-    myCountries = wrld_simpl@data$NAME %in% protein$Country
-    plot(plot(wrld_simpl, col = c(gray(.80), "red")[myCountries+1]))
-    ggplotly(map('worldHires',"Malta"))
-  })
+ 
   
   output$table <- DT::renderDT({
     protein %>%
@@ -345,6 +239,14 @@ server <- function(input, output, session){
       select(-1) %>%
       t()
   })
+  
+  output$titleSummary <- renderText({
+    paste("\n\n Statistics for ", input$first,":\n\n")
+  })
+  
+  output$titleTable <- renderText({
+    paste("\n\n Complete Data Table for ", input$first,":\n\n")
+  })
 
 
 }
@@ -352,39 +254,4 @@ server <- function(input, output, session){
 shinyApp(ui = ui, server = server)
 
 ```
-```{r echo=FALSE}
-ui <- fluidPage(
-  theme = shinythemes::shinytheme('simplex'),
-  titlePanel("Country Statistics Panel"),
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("first", "Select Country", unique(protein$Country)), 
-      #selectInput("second", "Select Column", colnames(protein[,-1]))
-      #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
-      #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
-      
 
-    ),
-    mainPanel(
-      tabsetPanel(
-        tabPanel("Summary", textOutput("summary"))
-      ),
-    )
-  )
-
-)
-
-server <- function(input, output, session){
-    outputText <- eventReactive(input$first, {
-      show(countries$Afghanistan)
-    })
-    output$summary <- renderText({
-      outputFinal <- outputText()
-      isolate(paste(outputFinal))
-    })
-
-}
-
-shinyApp(ui = ui, server = server)
-
-```

@@ -371,7 +371,10 @@ summary {
 
 <div id="library-imports" class="section level3">
 <h3>Library Imports</h3>
-<pre class="r"><code>library(shiny)
+<pre class="r"><code>#install.packages(&quot;maps&quot;)
+#install.packages(&quot;sp&quot;)
+#install.packages(&quot;mapdata&quot;)
+library(shiny)
 library(dplyr)
 library(tidyverse)
 library(DT)
@@ -381,11 +384,18 @@ library(flexdashboard)
 library(plotly)
 library(tidyverse)
 library(dplyr)
-library(ggplot2)</code></pre>
+library(ggplot2)
+library(rvest)
+library(magrittr)
+library(ggmap)
+library(stringr)
+library(maps)
+library(mapdata)
+library(maptools)</code></pre>
 </div>
 <div id="importing-the-data" class="section level3">
 <h3>Importing The Data</h3>
-<pre class="r"><code>protein &lt;- read.csv2(&quot;data/protein.csv&quot;, header=TRUE, sep=&quot;,&quot;)
+<pre class="r"><code>protein &lt;- read.csv2(&quot;data/protein.csv&quot;, header=TRUE, sep=&quot;;&quot;)
 head(protein)</code></pre>
 <pre><code>##               Country Alcoholic.Beverages Animal.Products Animal.fats
 ## 1         Afghanistan                   0          9.7523      0.0277
@@ -422,31 +432,42 @@ head(protein)</code></pre>
 ## 4   0.0092          34.7782         0.0092     0.8133        0.0924
 ## 5   0.0737          16.8161          0.043     1.6024        0.2947
 ## 6   0.0438          18.0176              0     1.0516             0
-##   Obesity Undernourished            Confirmed               Deaths
-## 1     4.5           29.8    0.027816623731665 0.000573050838546869
-## 2    22.3            6.2   0.0349195241427572  0.00111966410076977
-## 3    26.6            3.9   0.0191356033728056  0.00138229737824264
-## 4     6.8             25 0.000219556432367073 1.27279091227289e-05
-## 5    19.1           &lt;NA&gt;   0.0257731958762887  0.00309278350515464
-## 6    28.5            4.6   0.0268719820200717  0.00100580787289437
-##              Recovered               Active Population
-## 1  0.00282582408916461   0.0244177488039535   38042000
-## 2   0.0276067179846046  0.00619314205738279    2858000
-## 3   0.0110215177625213  0.00673178823204165   43406000
-## 4 5.72755910522799e-05 0.000149552932192064   31427000
-## 5   0.0195876288659794  0.00309278350515464      97000
-## 6  0.00830459066734907   0.0175615834798282   44939000
-##   Unit..all.except.Population.
-## 1                            %
-## 2                            %
-## 3                            %
-## 4                            %
-## 5                            %
+##   Obesity Undernourished Confirmed  Deaths Recovered  Active Population
+## 1     4.5             30   0.02780 0.00060   0.00280 0.02440   38042000
+## 2    22.3              6   0.03490 0.00110   0.02760 0.00620    2858000
+## 3    26.6              4   0.01910 0.00140   0.01100 0.00670   43406000
+## 4     6.8             25   0.00020 0.00000   0.00010 0.00010   31427000
+## 5    19.1                  0.02580 0.00310   0.01960 0.00310      97000
+## 6    28.5              5   0.02690 0.00100   0.00830 0.01760   44939000
+##   Unit..all.except.Population. X
+## 1                            %  
+## 2                            %  
+## 3                            %  
+## 4                            %  
+## 5                            %  
 ## 6                            %</code></pre>
+<pre class="r"><code># Some columns are gathered as factors. We need them as numeric.
+protein[,-1] &lt;- lapply(protein[,-1], function(x) as.numeric(as.character(x)))</code></pre>
+</div>
+<div id="dplyr-and-tidyr-section" class="section level3">
+<h3>DPLYR and TIDYR Section</h3>
+<pre class="r"><code>#Following columns are in the form of percentages over the population and we need them as in number of people. So appropriate calculations are done here.
+
+col_to_bind &lt;- as.data.frame(apply(protein[c(&quot;Confirmed&quot;,&quot;Deaths&quot;,&quot;Recovered&quot;,&quot;Active&quot;,&quot;Population&quot;)],2,as.numeric))
+
+nums&lt;- col_to_bind %&gt;% transmute(Confirmed = Population * Confirmed / 100, 
+  Active = Population * Active / 100,
+  Recovered = Population * Recovered / 100,
+  Deaths = Population * Deaths / 100)
+
+protein &lt;-subset(protein, select = -c(Confirmed,Deaths,Recovered,Active,Unit..all.except.Population.,X))
+
+
+protein &lt;- cbind(protein,nums)</code></pre>
 </div>
 <div id="own-s4-class-and-method-for-each-country" class="section level3">
 <h3>Own S4 Class and Method For Each Country</h3>
-<pre class="r"><code># OWN CLASS
+<pre class="r"><code># Here we are turning each row into an S4 Class object which we could use them in the following calculations and visualizations. However, it is best to stick with our dataframe in this case. We would like to present our knowledge on S4 Classes and Object Oriented Programming but do not want to overcomplicate anything for the sake of extra points.
 country &lt;- setClass(&quot;country&quot;,
                     slots = list(cname = &quot;character&quot;,
                                  alcholic_beverages = &quot;numeric&quot;,
@@ -484,13 +505,16 @@ country &lt;- setClass(&quot;country&quot;,
 setMethod(f = &quot;show&quot;, 
           signature = &quot;country&quot;, 
           definition = function(object) {
-            cat(object@cname, &quot;\n&quot;)
-            cat(&quot;Number of Confirmed Cases:&quot;, object@confirmed*object@population, &quot;\n&quot;)
-            cat(&quot;Number of Active Cases:&quot;, object@active*object@population, &quot;\n&quot;)
-            cat(&quot;Number of Recovered Cases:&quot;, object@recovered*object@population, &quot;\n&quot;)
+            a &lt;- cat(object@cname, &quot;\n&quot;)
+            b &lt;- cat(&quot;Number of Confirmed Cases:&quot;, object@confirmed, &quot;\n&quot;)
+            c &lt;- cat(&quot;Number of Active Cases:&quot;, object@active, &quot;\n&quot;)
+            d &lt;- cat(&quot;Number of Recovered Cases:&quot;, object@recovered, &quot;\n&quot;)
+            e &lt;- cat(&quot;Number of Deaths:&quot;, object@deaths, &quot;\n&quot;)
+            f &lt;- paste(a,b,c,d,e)
+            
+            return(f)
           }
 )
-
 
 #Creation of an empty list
 countries &lt;- list()
@@ -531,703 +555,41 @@ for (row in 1:nrow(protein)) {
                                              recovered = as.numeric(protein$Recovered[row]),
                                              active = as.numeric(protein$Active[row]),
                                              population = as.numeric(protein$Population[row]))
-} </code></pre>
-<pre><code>## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
+} 
 
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
 
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated
-
-## Warning in `[&lt;-`(`*tmp*`, as.character(protein$Country[row]), value
-## = country(cname = as.character(protein$Country[row]), : implicit list
-## embedding of S4 objects is deprecated</code></pre>
-<pre class="r"><code>#As per seen below the object type is S4
+#As per seen below the object type is S4
 typeof(countries$Poland)</code></pre>
 <pre><code>## [1] &quot;S4&quot;</code></pre>
 <pre class="r"><code>#Here the S4 object automatically invokes the defined method
 countries$Poland</code></pre>
 <pre><code>## Poland 
-## Number of Confirmed Cases: 4147200000 
-## Number of Active Cases: 4.224e+09 
-## Number of Recovered Cases: 3916800000</code></pre>
-<pre class="r"><code>#He the object attribute is called
+## Number of Confirmed Cases: 21312 
+## Number of Active Cases: 11136 
+## Number of Recovered Cases: 9177.6 
+## Number of Deaths: 998.4</code></pre>
+<pre class="r"><code>countries$Turkey</code></pre>
+<pre><code>## Turkey 
+## Number of Confirmed Cases: 156788.1 
+## Number of Active Cases: 33786.26 
+## Number of Recovered Cases: 118706.3 
+## Number of Deaths: 4378.171</code></pre>
+<pre class="r"><code>#Here the object attribute is called
+#Normally this attribute should be called via a devoted get function for security purposes. However, following applications will not require us to use these class objects. Thus, there is not get methods for each of the attribute.
 countries$Turkey@fruits</code></pre>
-<pre><code>## [1] 127</code></pre>
+<pre><code>## [1] 0.9879</code></pre>
 </div>
-<div id="shiny-with-dplyr-and-own-function" class="section level3">
-<h3>Shiny With DPLYR and Own Function</h3>
+<div id="creating-world-map-with-own-function" class="section level3">
+<h3>Creating World Map With Own Function</h3>
+</div>
+<div id="own-function-to-plot-country-shape" class="section level3">
+<h3>Own Function to Plot Country Shape</h3>
+<p><img src="data:image/png;base64,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ADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBgBAEFADCCgAIAGEFAAQCMIKAAAEYQUAAAIwgoAIARBBQAwAgCCgBg5H+00Q6rF9+xmwAAAABJRU5ErkJggg==" width="672" /><img src="data:image/png;base64,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" width="672" /><img src="data:image/png;base64,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" width="672" /><img src="data:image/png;base64,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" width="672" /><img src="data:image/png;base64,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AkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSg8EgWL+m/ZG14JAL6p6wNEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkooAOR4QAiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFB7W4vX9ywwMD0tAf5uBASIBBYgEFCASUIBIQAEiAQWIBBQgElCASEABIgEFiAQUIBJQgEhAASIBBYgEFCASUIBIQAEiAQWIBBQgElAYwi8k/TyTwhAC+vNMChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAAkYACRAIKEAkoQCSgAJGAAkQCChAJKEAkoACRgAJEAgoQCShAJKAA0TNf+q9D/REP+gAAAABJRU5ErkJggg==" width="672" /></p>
+</div>
+<div id="shiny-application" class="section level3">
+<h3>Shiny Application</h3>
 <pre><code>## PhantomJS not found. You can install it with webshot::install_phantomjs(). If it is installed, please make sure the phantomjs executable can be found via the PATH variable.</code></pre>
-<p><div style="width: 100% ; height: 400px ; text-align: center; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box;" class="muted well">Shiny applications not supported in static R Markdown documents</div> Note that the <code>echo = FALSE</code> parameter was added to the code chunk to prevent printing of the R code that generated the plot.</p>
+<div style="width: 100% ; height: 400px ; text-align: center; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box;" class="muted well">Shiny applications not supported in static R Markdown documents</div>
 </div>
 
 
