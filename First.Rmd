@@ -12,6 +12,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ### Library Imports
 
 ```{r warning=FALSE, message=FALSE}
+#install.packages("maps")
+#install.packages("sp")
+#install.packages("mapdata")
 library(shiny)
 library(dplyr)
 library(tidyverse)
@@ -23,6 +26,13 @@ library(plotly)
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
+library(rvest)
+library(magrittr)
+library(ggmap)
+library(stringr)
+library(maps)
+library(mapdata)
+library(maptools)
 ```
 
 ### Importing The Data
@@ -34,7 +44,7 @@ head(protein)
 ```
 
 
-
+### DPLYR and TIDYR Section
 ```{r message=TRUE, warning=FALSE}
 
 
@@ -91,11 +101,14 @@ country <- setClass("country",
 setMethod(f = "show", 
           signature = "country", 
           definition = function(object) {
-            cat(object@cname, "\n")
-            cat("Number of Confirmed Cases:", object@confirmed, "\n")
-            cat("Number of Active Cases:", object@active, "\n")
-            cat("Number of Recovered Cases:", object@recovered, "\n")
-            cat("Number of Deaths:", object@deaths, "\n")
+            a <- cat(object@cname, "\n")
+            b <- cat("Number of Confirmed Cases:", object@confirmed, "\n")
+            c <- cat("Number of Active Cases:", object@active, "\n")
+            d <- cat("Number of Recovered Cases:", object@recovered, "\n")
+            e <- cat("Number of Deaths:", object@deaths, "\n")
+            f <- paste(a,b,c,d,e)
+            
+            return(f)
           }
 )
 
@@ -163,12 +176,6 @@ countries$Turkey@fruits
 #Changing data types to number to compute basic math
 
 
-country_statistics <- function(c_name){
-  #c variable i yukaridaki classtan 'countries@Poland' gibi alinip @ isareti ile attributelari alinabilir
-  
-  return(countries$c_nam)
-}
-country_statistics(Portugal)
 plot_it <- function(d, a, b){
     #if else ile farkli plot secenekleri
     myplot <- ggplot(d, aes(x = a, y = b, color= `Total Volume`)) +
@@ -182,15 +189,113 @@ plot_it <- function(d, a, b){
 }
 
 #plot_it("Confirmed", "Alcoholic")
+
+#Preparation for map plot
+#Getting the world map
+map.world <- map_data("world")
+
+#getting the supported region names
+i <- unique(map.world$region)
+i
+
+#getting our country names
+k <- as.factor(protein$Country) %>% levels()
+k
+
+#comparing them with the supported ones
+j <- !(k %in% i)
+j
+
+#extracting not supported ones
+l <- which(j, arr.ind = FALSE, useNames = TRUE)
+l
+
+#Displaying them
+for (row in l){
+  cat(as.character(protein$Country[row]),"\n")
+}
+
+#Recoding
+protein$Country <- recode(protein$Country
+                                  ,'Antigua and Barbuda' = 'Antigua'
+                                  ,'Congo' = 'Republic of Congo'
+                                  ,"Cote d'Ivoire" = 'Ivory Coast'
+                                  ,'Czechia' = 'Czech Republic'
+                                  ,'Iran (Islamic Republic of)' = 'Iran'
+                                  ,'Korea' = 'South Korea'
+                                  ,'United Kingdom' = 'UK'
+                                  ,'United Republic of Tanzania' = 'Tanzania'
+                                  ,'United States of America' = 'USA'
+                                  )
+# LEFT JOIN
+map.world_joined <- left_join(map.world, protein, by = c('region' = 'Country'))
+identical(map.world,map.world_joined)
+head(map.world_joined)
+
+#===================================================
+# CREATE FLAG
+# - in the map, we're going to highlight
+#   the countries with high 'talent competitiveness'
+# - Here, we'll create a flag that will
+#   indicate whether or not we want to 
+#   "fill in" a particular country 
+#   on the map
+#===================================================
+map.world_joined <- map.world_joined %>% mutate(fill_flg = ifelse(is.na(rank),F,T))
+head(map.world_joined)
+
+#Creating Country Points For High Cases With Geocodes (Should be Automated)
+df.country_points <- data.frame(country = c("USA","Russia"), lon = c(as.numeric(37.09024),as.numeric(61.52401)),lat = c(as.numeric(-95.712891),as.numeric(105.318756)), stringsAsFactors = F)
+glimpse(df.country_points)
+
+
+
+
+
+
+ggplot() +
+  geom_polygon(data = map.world_joined, aes(x = long, y = lat, group = group, fill = fill_flg)) +
+  geom_point(data = df.country_points, aes(x = lon, y = lat), color = "#e60000") +
+  scale_fill_manual(values = c("#CCCCCC","#e60000")) +
+  labs(title = 'Countries with Selected Variable'
+       ,subtitle = "source: COVID-19 Healthy Diet Dataset") +
+  theme(text = element_text(color = "#FFFFFF")
+        ,panel.background = element_rect(fill = "#444444")
+        ,plot.background = element_rect(fill = "#444444")
+        ,panel.grid = element_blank()
+        ,plot.title = element_text(size = 30)
+        ,plot.subtitle = element_text(size = 10)
+        ,axis.text = element_blank()
+        ,axis.title = element_blank()
+        ,axis.ticks = element_blank()
+        ,legend.position = "none"
+        )
+
+
+
+
+
+
+protein$Country[162]
+
+
+
+
+
+map('worldHires')
+map('worldHires',"Malta")
+
+str(protein)
+
 ```
 
 ```{r echo=FALSE}
 ui <- fluidPage(
   theme = shinythemes::shinytheme('simplex'),
-  titlePanel("Protein Shake"),
+  titlePanel("Plotter Panel"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("first", "Select Country", colnames(protein[,-1])), 
+      selectInput("first", "Select Country", unique(protein$Country)), 
       selectInput("second", "Select Column", colnames(protein[,-1]))
       #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
       #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
@@ -199,8 +304,10 @@ ui <- fluidPage(
     ),
     mainPanel(
       tabsetPanel(
-        tabPanel("Plot", plotlyOutput('plot')),
-        tabPanel("Boxplot", plotlyOutput('boxplot'))
+        tabPanel("Summary", plotlyOutput('plot')),
+        tabPanel("Data Table", DT::DTOutput('table')),
+        tabPanel("Boxplot", plotlyOutput('boxplot')),
+        tabPanel("World Map", plotlyOutput('mapplot'))
       ),
     )
   )
@@ -209,14 +316,34 @@ ui <- fluidPage(
 
 server <- function(input, output, session){
   output$plot <- renderPlotly({
-    myplot <- ggplot(protein, aes_string(x = input$first, y=input$second,colour = '"smooth"'))
+    #myplot <- ggplot(protein, aes_string(x = input$first, y=input$second,colour = protein$Country))
+    #ggplotly(myplot)
+    newData <- protein  %>%
+      filter(Country == input$first)
+    myplot <- ggplot(newData, aes(x = `Country`, y = `Active`, color= `Deaths`)) +
+      geom_bar(stat = "identity",width = 0.1)+
+      theme_bw() +
+      theme(axis.text = element_text(size = 12))
     ggplotly(myplot)
   })
   
   output$boxplot <- renderPlotly({
-    myplot <- ggplot(protein, aes(x = "", y = protein$Alcoholic.Beverages)) + 
+    myplot <- ggplot(protein, aes(x = "", y = input$second)) + 
       geom_boxplot()
     ggplotly(myplot)
+  })
+  output$mapplot <- renderPlotly({
+    data(wrld_simpl)
+    myCountries = wrld_simpl@data$NAME %in% protein$Country
+    plot(plot(wrld_simpl, col = c(gray(.80), "red")[myCountries+1]))
+    ggplotly(map('worldHires',"Malta"))
+  })
+  
+  output$table <- DT::renderDT({
+    protein %>%
+      filter(Country == input$first) %>%
+      select(-1) %>%
+      t()
   })
 
 
@@ -225,4 +352,39 @@ server <- function(input, output, session){
 shinyApp(ui = ui, server = server)
 
 ```
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r echo=FALSE}
+ui <- fluidPage(
+  theme = shinythemes::shinytheme('simplex'),
+  titlePanel("Country Statistics Panel"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("first", "Select Country", unique(protein$Country)), 
+      #selectInput("second", "Select Column", colnames(protein[,-1]))
+      #a <-selectInput('Country', 'Select a Country', unique(protein$Country)),
+      #b <- select('Nutrition', 'Select Nutririon Type', colnames(protein[,-1])),
+      
+
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Summary", textOutput("summary"))
+      ),
+    )
+  )
+
+)
+
+server <- function(input, output, session){
+    outputText <- eventReactive(input$first, {
+      show(countries$Afghanistan)
+    })
+    output$summary <- renderText({
+      outputFinal <- outputText()
+      isolate(paste(outputFinal))
+    })
+
+}
+
+shinyApp(ui = ui, server = server)
+
+```
